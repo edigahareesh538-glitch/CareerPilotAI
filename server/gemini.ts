@@ -30,8 +30,8 @@ function configuredKey() {
 }
 
 function modelName() {
-  // Direct primary fallback set to gemini-3.8-flash
-  return process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
+  // Uses standard valid Gemini 2.5 Flash model identifier
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 }
 
 function profileContext(profile: CareerProfile) {
@@ -50,57 +50,62 @@ function profileContext(profile: CareerProfile) {
 
 export async function generate(prompt: string, systemInstruction: string) {
   const apiKey = configuredKey();
-  if (!apiKey) throw new Error("Gemini is not configured on the server.");
+  if (!apiKey) throw new Error("Gemini API key is not configured on the Render backend.");
 
-  // Secondary fallback models sequence: gemini-3.8-flash -> gemini-3.5-flash-lite -> gemini-2.5-flash
+  // Sequence of valid official Gemini models for reliable fallback
   const models = Array.from(
-    new Set([modelName(), "gemini-3.5-flash-lite", "gemini-2.5-flash"])
+    new Set([modelName(), "gemini-2.5-flash", "gemini-1.5-flash"])
   );
 
   let lastError = "Gemini request failed.";
   for (const model of models) {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        model
-      )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          contents: [
-            { role: "user", parts: [{ text: prompt.slice(0, 12_000) }] },
-          ],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 900 },
-        }),
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          model
+        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [
+              { role: "user", parts: [{ text: prompt.slice(0, 12_000) }] },
+            ],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 900 },
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+        }>;
+        error?: { message?: string };
+      };
+
+      if (response.ok) {
+        const text = payload.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text || "")
+          .join("\n")
+          .trim();
+        if (text) return text;
+        lastError = "Gemini returned an empty response.";
+      } else {
+        lastError =
+          payload.error?.message ||
+          `Gemini request failed with HTTP ${response.status}.`;
+        const retryable =
+          response.status === 429 ||
+          response.status >= 500 ||
+          response.status === 404 ||
+          /high demand|temporarily|unavailable|deprecated|not found/i.test(
+            lastError
+          );
+        if (!retryable) break;
       }
-    );
-
-    const payload = (await response.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-      }>;
-      error?: { message?: string };
-    };
-
-    if (response.ok) {
-      const text = payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text || "")
-        .join("\n")
-        .trim();
-      if (text) return text;
-      lastError = "Gemini returned an empty response.";
-    } else {
-      lastError =
-        payload.error?.message ||
-        `Gemini request failed with ${response.status}.`;
-      const retryable =
-        response.status === 429 ||
-        response.status >= 500 ||
-        /high demand|temporarily|unavailable|deprecated|not found/i.test(
-          lastError
-        );
-      if (!retryable) break;
+    } catch (err: any) {
+      lastError = err?.message || "Network error while connecting to Gemini API.";
     }
   }
   throw new Error(lastError);
