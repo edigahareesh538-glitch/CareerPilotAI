@@ -4,11 +4,28 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
 import { handleGeminiRequest } from "./gemini.js";
 import { api } from "./agents.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/*
+ * ---------------------------------------------------------
+ * SUPABASE CLIENT INITIALIZATION
+ * ---------------------------------------------------------
+ */
+const supabaseUrl = process.env.SUPABASE_URL?.trim() || "";
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+  process.env.SUPABASE_ANON_KEY?.trim() ||
+  "";
+
+export const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null;
 
 async function startServer() {
   const app = express();
@@ -30,6 +47,7 @@ async function startServer() {
       status: "ok",
       service: "careerpilot-ai",
       geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      supabaseConfigured: Boolean(supabase),
     });
   });
 
@@ -52,6 +70,35 @@ async function startServer() {
               : "Unknown server error",
         });
       }
+    }
+  });
+
+  // Database route example: Save or retrieve profile
+  app.post("/api/profile", async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({
+        ok: false,
+        error: "Supabase database client is not configured.",
+      });
+    }
+
+    try {
+      const profile = req.body;
+      const { data, error } = await supabase
+        .from("profiles")
+        .upsert(profile)
+        .select();
+
+      if (error) {
+        return res.status(400).json({ ok: false, error: error.message });
+      }
+
+      res.json({ ok: true, data });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : "Database error",
+      });
     }
   });
 
