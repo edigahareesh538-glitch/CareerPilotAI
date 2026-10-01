@@ -84,14 +84,10 @@ export async function generate(
   }
 
   // Ordered fallback sequence across valid Gemini models
-  const models = Array.from(
-    new Set([
-      modelName(),
-      "gemini-3.8-flash",
-      "gemini-2.5-flash",
-      "gemini-1.5-flash",
-    ])
-  );
+  const models = [
+  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+];
 
   let lastError = "Gemini request failed.";
 
@@ -157,10 +153,7 @@ export async function generate(
       const retryable =
         response.status === 429 ||
         response.status >= 500 ||
-        response.status === 404 ||
-        /high demand|temporarily|unavailable|not found|deprecated/i.test(
-          lastError
-        );
+        /high demand|temporarily|unavailable/i.test(lastError);
 
       if (!retryable) {
         break;
