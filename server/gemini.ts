@@ -45,7 +45,6 @@ const MAX_HISTORY_ITEMS = 8;
 
 function configuredKey(): string | undefined {
   const key = process.env.GEMINI_API_KEY?.trim();
-
   return key || undefined;
 }
 
@@ -84,10 +83,13 @@ export async function generate(
     );
   }
 
+  // Ordered fallback sequence across valid Gemini models
   const models = Array.from(
     new Set([
       modelName(),
       "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
     ])
   );
 
@@ -95,16 +97,15 @@ export async function generate(
 
   for (const model of models) {
     try {
-      const url =
-        `https://generativelanguage.googleapis.com/v1beta/models/` +
-        `${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
-          apiKey
-        )}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        model
+      )}:generateContent`;
 
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-goog-api-key": apiKey, // Sends AQ... keys correctly in request header
         },
         body: JSON.stringify({
           systemInstruction: {
@@ -146,7 +147,6 @@ export async function generate(
         }
 
         lastError = "Gemini returned an empty response.";
-
         continue;
       }
 
@@ -198,7 +198,6 @@ export async function handleGeminiRequest(
     };
 
     const profile: CareerProfile = body.profile ?? {};
-
     const context = profileContext(profile);
 
     /*
@@ -206,13 +205,14 @@ export async function handleGeminiRequest(
      * INTERVIEW QUESTION
      * ---------------------------------------------------------
      */
-
     if (body.action === "interview") {
-      const interviewType =
-        String(body.interviewType || "Technical").trim().slice(0, 100);
+      const interviewType = String(body.interviewType || "Technical")
+        .trim()
+        .slice(0, 100);
 
-      const difficulty =
-        String(body.difficulty || "Medium").trim().slice(0, 50);
+      const difficulty = String(body.difficulty || "Medium")
+        .trim()
+        .slice(0, 50);
 
       const prompt = `
 Create ONE ${difficulty} ${interviewType} interview question
@@ -256,7 +256,6 @@ Keep questions realistic and useful for interview preparation.
      * NORMAL CAREER CHAT
      * ---------------------------------------------------------
      */
-
     const message = String(body.message ?? "")
       .trim()
       .slice(0, MAX_MESSAGE_TEXT);
@@ -275,7 +274,6 @@ Keep questions realistic and useful for interview preparation.
      * CONVERSATION HISTORY
      * ---------------------------------------------------------
      */
-
     const history = (Array.isArray(body.history) ? body.history : [])
       .slice(-MAX_HISTORY_ITEMS)
       .map((item) => {
@@ -294,7 +292,6 @@ Keep questions realistic and useful for interview preparation.
      * CAREER COACH PROMPT
      * ---------------------------------------------------------
      */
-
     const prompt = `
 Candidate profile:
 ${context}
@@ -355,9 +352,7 @@ Give practical, actionable and personalized guidance.
     });
   } catch (error: unknown) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "Gemini request failed.";
+      error instanceof Error ? error.message : "Gemini request failed.";
 
     console.error("CareerPilot Gemini error:", error);
 
