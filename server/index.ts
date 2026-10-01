@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import cors from "cors";
 import { handleGeminiRequest } from "./gemini.js";
 import { api } from "./agents.js";
 
@@ -11,6 +12,16 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  // Enable CORS for all incoming requests (resolves cross-origin errors from Vercel)
+  app.use(
+    cors({
+      origin: "*",
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
   app.use(express.json({ limit: "64kb" }));
 
   app.post("/api/gemini", async (req, res) => {
@@ -27,8 +38,11 @@ async function startServer() {
 
   app.use(express.static(staticPath));
 
-  // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
+  // Handle client-side routing - serve index.html for non-API routes
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
