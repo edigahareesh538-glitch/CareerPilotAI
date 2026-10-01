@@ -49,7 +49,7 @@ function configuredKey(): string | undefined {
 }
 
 function modelName(): string {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
 }
 
 function profileContext(profile: CareerProfile): string {
@@ -87,8 +87,8 @@ export async function generate(
   const models = Array.from(
     new Set([
       modelName(),
+      "gemini-3.8-flash",
       "gemini-2.5-flash",
-      "gemini-2.0-flash",
       "gemini-1.5-flash",
     ])
   );
